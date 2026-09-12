@@ -39,6 +39,9 @@ test("ACP notebook binding, isolated resources, two requests and resume", { time
   const endpoint = `http://127.0.0.1:${broker.port}`;
   const debugRequest = (action = "") => fetch(endpoint + "/debug" + action, { method: action ? "POST" : "GET", headers: { Origin: url, Authorization: `Bearer ${broker.token}` } }).then((r) => r.json());
   assert.equal((await fetch(endpoint + "/debug")).status, 403);
+  assert.equal((await debugRequest()).paused, true);
+  assert.deepEqual((await debugRequest()).events, []);
+  await debugRequest("/resume");
   assert.equal((await fetch(endpoint + "/debug/clear", { method: "POST", headers: { Origin: url } })).status, 403);
   const forbidden = new WebSocket(endpoint.replace("http", "ws") + `/message?token=${broker.token}`, { origin: "http://evil.invalid" });
   await assert.rejects(once(forbidden, "open"), /403/);

@@ -25,6 +25,10 @@ const url = `http://127.0.0.1:${port}`;
 let broker, browser, server;
 try {
   broker = await startTutorServer({ notebook, profile, url, port: 0 });
+  const enableCapture = await fetch(`http://127.0.0.1:${broker.port}/debug/resume`, {
+    method: "POST", headers: { Origin: url, Authorization: `Bearer ${broker.token}` },
+  });
+  assert.equal(enableCapture.status, 200);
   server = spawn(resolve(projectDir, "../marimo/.venv/bin/marimo"), ["edit", notebook, "--headless", "--no-token", "--host", "127.0.0.1", "--port", String(port), "--skip-update-check"], { cwd: temp, stdio: "ignore" });
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(url + "/health")).ok) break; } catch {}
@@ -124,7 +128,7 @@ try {
   }
   assert.deepEqual(genericAiRequests, []);
   await page.screenshot({ path: join(profileDir, "tutor-cell-hint.png") });
-  await expect(page.getByText("Cell context sent to tutor", { exact: true })).toBeVisible();
+  await expect(page.getByText("Cell context sent to tutor", { exact: true })).toHaveCount(0);
   console.log("Keyboard Help sent the unrun draft and old output, added a hint, and preserved student work; no generic AI requests");
   await page.getByTestId("footer-panel").click();
   await page.getByText("Tutor", { exact: true }).click();
@@ -158,7 +162,7 @@ try {
   await expect(diagnostics).toContainText("Capture paused");
   await diagnostics.getByRole("button", { name: "Clear diagnostics" }).click();
   await expect(diagnostics).toContainText("No events retained.");
-  await diagnostics.getByRole("button", { name: "Resume capture" }).click();
+  await diagnostics.getByRole("button", { name: "Enable capture" }).click();
   await page.route(debugUrl, (route) => route.fulfill({ status: 503, body: "offline" }));
   await expect(diagnostics.getByRole("alert")).toContainText("HTTP 503", { timeout: 10_000 });
   await page.unroute(debugUrl);

@@ -1,6 +1,6 @@
 // In-memory diagnostics only. Never read auth files or capture HTTP headers.
 export function createTutorDebug(secrets = []) {
-  let events = [], bytes = 0, sequence = 0, dropped = 0, paused = false, latestPrompt = null, configuration = null;
+  let events = [], bytes = 0, sequence = 0, dropped = 0, paused = true, latestPrompt = null, configuration = null;
   let current = {};
   const redact = (value) => {
     let text = JSON.stringify(value, function (key, item) {

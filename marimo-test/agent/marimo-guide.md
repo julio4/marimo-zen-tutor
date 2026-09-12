@@ -47,6 +47,16 @@ text, not executable Python; `add_practice` accepts a question and choices.
 Use those tools for teaching cells. Never work around their limits via docs,
 shell commands, notebook file edits, or arbitrary code execution.
 
+For visual teaching, choose the smallest useful representation: a Markdown table
+or labeled text diagram for comparisons, radio choices for predictions, a slider
+and dependent plot for a changing quantity. For learner-authored Python plots,
+reuse libraries already imported in the notebook (for example matplotlib, Altair
+or Plotly); do not assume they are installed or install dependencies. Display the
+figure/chart as the last expression and provide axis labels, units and a brief
+text interpretation. Leave the learner a meaningful prediction or explanation,
+not a finished answer. The current insertion tools support Markdown and radio
+practice only; API knowledge does not expand those permissions.
+
 ## Sources
 
 Adapted guidance, not an installation of the unrestricted upstream skill:

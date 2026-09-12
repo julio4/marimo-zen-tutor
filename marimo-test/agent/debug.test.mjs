@@ -4,6 +4,9 @@ import { createTutorDebug } from "./debug.mjs";
 
 test("diagnostics redact, bound, pause and clear without replaying discarded events", () => {
   const debug = createTutorDebug(["launch-capability"]);
+  debug.record("request", { method: "session/prompt", params: { prompt: "not captured" } });
+  assert.deepEqual(debug.snapshot(), { paused: true, dropped: 0, events: [], latestPrompt: null, configuration: null });
+  debug.pause(false);
   debug.record("request", { id: "launch-capability", method: "session/prompt", params: { token: "private-token", prompt: 'Bearer bearer-secret api_key="embedded-secret" launch-capability sk-test-secret', password: "hidden" } });
   const serialized = JSON.stringify(debug.snapshot());
   for (const secret of ["launch-capability", "private-token", "bearer-secret", "embedded-secret", "sk-test-secret", "hidden"]) assert.ok(!serialized.includes(secret), secret);

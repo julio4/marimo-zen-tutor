@@ -343,7 +343,7 @@ index 7b3f1ce..d5c00bf 100644
                key={agent.id}
                agent={agent}
 diff --git a/frontend/src/components/chat/acp/blocks.tsx b/frontend/src/components/chat/acp/blocks.tsx
-index 0857f2c..bf345cf 100644
+index 0857f2c..644652a 100644
 --- a/frontend/src/components/chat/acp/blocks.tsx
 +++ b/frontend/src/components/chat/acp/blocks.tsx
 @@ -23,6 +23,8 @@ import {
@@ -355,7 +355,7 @@ index 0857f2c..bf345cf 100644
  import { ReadonlyDiff } from "@/components/editor/code/readonly-diff";
  import { JsonOutput } from "@/components/editor/output/JsonOutput";
  import { MarkdownRenderer } from "@/components/markdown/markdown-renderer";
-@@ -359,6 +361,27 @@ export const PlansBlock = (props: { data: PlanNotificationEvent[] }) => {
+@@ -359,6 +361,19 @@ export const PlansBlock = (props: { data: PlanNotificationEvent[] }) => {
  };
  
  export const UserMessagesBlock = (props: { data: UserNotificationEvent[] }) => {
@@ -369,20 +369,27 @@ index 0857f2c..bf345cf 100644
 +    return (
 +      <div className="text-muted-foreground border p-2 bg-background rounded">
 +        <p>{TUTOR_HELP_REQUEST}</p>
-+        <details className="mt-2 text-xs">
-+          <summary className="cursor-pointer">
-+            Cell context sent to tutor
-+          </summary>
-+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words mt-2">
-+            {content.text}
-+          </pre>
-+        </details>
 +      </div>
 +    );
 +  }
    return (
      <div className="flex flex-col gap-2 text-muted-foreground border p-2 bg-background rounded wrap-break-word overflow-x-hidden">
        <ContentBlocks data={props.data.map((item) => item.content)} />
+@@ -606,6 +621,14 @@ export const ToolNotificationsBlock = (props: {
+ }) => {
+   const toolCalls = mergeToolCalls(props.data);
+ 
++  if (getTutorConnection()) {
++    return toolCalls.some((item) => item.status === "failed") ? (
++      <p role="status" className="text-sm text-muted-foreground">
++        That step didn’t finish. Details are available in the Tutor debug tab.
++      </p>
++    ) : null;
++  }
++
+   return (
+     <div className="flex flex-col text-muted-foreground overflow-x-hidden">
+       {toolCalls.map((item) => (
 diff --git a/frontend/src/components/chat/acp/state.ts b/frontend/src/components/chat/acp/state.ts
 index 550ec42..da87169 100644
 --- a/frontend/src/components/chat/acp/state.ts
@@ -574,18 +581,19 @@ index 7ca8534..fc9ec0e 100644
      return true;
    }
 diff --git a/frontend/src/components/editor/chrome/wrapper/app-chrome.tsx b/frontend/src/components/editor/chrome/wrapper/app-chrome.tsx
-index f12052c..b953347 100644
+index f12052c..c81cbca 100644
 --- a/frontend/src/components/editor/chrome/wrapper/app-chrome.tsx
 +++ b/frontend/src/components/editor/chrome/wrapper/app-chrome.tsx
-@@ -29,6 +29,7 @@ import { cellErrorCount } from "@/core/cells/cells";
+@@ -29,6 +29,8 @@ import { cellErrorCount } from "@/core/cells/cells";
  import { capabilitiesAtom } from "@/core/config/capabilities";
  import { aiEnabledAtom } from "@/core/config/config";
  import { getFeatureFlag } from "@/core/config/feature-flag";
 +import { getTutorConnection } from "@/core/tutor/connection";
++import { TutorHeader } from "@/core/tutor/header";
  import { cn } from "@/utils/cn";
  import { ErrorBoundary } from "../../boundary/ErrorBoundary";
  import { raf2 } from "../../navigation/focus-utils";
-@@ -52,6 +53,7 @@ import {
+@@ -52,6 +54,7 @@ import {
    LazySnippetsPanel,
    LazyTerminal,
    LazyTracingPanel,
@@ -593,7 +601,7 @@ index f12052c..b953347 100644
    PANEL_PRELOADERS,
  } from "./lazy-panels";
  import { panelLayoutAtom, useChromeActions, useChromeState } from "../state";
-@@ -302,6 +304,7 @@ export const AppChrome: React.FC<PropsWithChildren> = ({ children }) => {
+@@ -302,6 +305,7 @@ export const AppChrome: React.FC<PropsWithChildren> = ({ children }) => {
    };
  
    const SIDEBAR_PANELS: Record<PanelType, React.ReactNode> = {
@@ -601,7 +609,7 @@ index f12052c..b953347 100644
      files: <LazyFileExplorerPanel.Component />,
      variables: <LazySessionPanel.Component />,
      dependencies: <LazyDependencyGraphPanel.Component />,
-@@ -360,7 +363,9 @@ export const AppChrome: React.FC<PropsWithChildren> = ({ children }) => {
+@@ -360,7 +364,9 @@ export const AppChrome: React.FC<PropsWithChildren> = ({ children }) => {
                    </TabsList>
                  </Tabs>
                </div>
@@ -612,6 +620,14 @@ index f12052c..b953347 100644
                <Tabs
                  value={aiPanelTab}
                  onValueChange={(value) => {
+@@ -577,6 +583,7 @@ export const AppChrome: React.FC<PropsWithChildren> = ({ children }) => {
+ 
+   return (
+     <PanelsWrapper>
++      <TutorHeader />
+       <PanelGroup autoSaveId="marimo:chrome:v1:l2" direction={"horizontal"}>
+         <TooltipProvider>
+           <Sidebar />
 diff --git a/frontend/src/components/editor/chrome/wrapper/footer-items/ai-status.tsx b/frontend/src/components/editor/chrome/wrapper/footer-items/ai-status.tsx
 index 03e3301..1e92b3e 100644
 --- a/frontend/src/components/editor/chrome/wrapper/footer-items/ai-status.tsx
@@ -980,10 +996,10 @@ index 0000000..75111ce
 +}
 diff --git a/frontend/src/components/editor/chrome/panels/tutor-panel.tsx b/frontend/src/components/editor/chrome/panels/tutor-panel.tsx
 new file mode 100644
-index 0000000..9804ec7
+index 0000000..2f20bb3
 --- /dev/null
 +++ b/frontend/src/components/editor/chrome/panels/tutor-panel.tsx
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,178 @@
 +/* Copyright 2026 Marimo. All rights reserved. */
 +import { useEffect, useState } from "react";
 +import { Button } from "@/components/ui/button";
@@ -1082,7 +1098,7 @@ index 0000000..9804ec7
 +          disabled={!data || busy}
 +          onClick={() => void control(data?.paused ? "resume" : "pause")}
 +        >
-+          {data?.paused ? "Resume capture" : "Pause capture"}
++          {data?.paused ? "Enable capture" : "Pause capture"}
 +        </Button>
 +        <Button
 +          size="xs"
@@ -1106,8 +1122,9 @@ index 0000000..9804ec7
 +        Broker-observed ACP traffic, not the full provider request or hidden
 +        reasoning. Redaction is best-effort. Memory only: last 200 events / 1
 +        million payload characters; {data?.dropped ?? 0} older events dropped.
-+        Pause/clear affect diagnostics only, not tutoring or saved
-+        conversations.
++        Capture is off on launch. Enable it to record future events; earlier
++        interactions are not backfilled. Pause/clear affect diagnostics only,
++        not tutoring or saved conversations.
 +      </p>
 +      <p>
 +        Learning context: companion, learner profile, inferred goals and passive
@@ -1380,23 +1397,94 @@ index 0000000..7397502
 +  }
 +  return debugSchema.parse(await response.json());
 +}
-diff --git a/frontend/src/core/tutor/help-message.test.tsx b/frontend/src/core/tutor/help-message.test.tsx
+diff --git a/frontend/src/core/tutor/header.test.tsx b/frontend/src/core/tutor/header.test.tsx
 new file mode 100644
-index 0000000..32541b1
+index 0000000..e583197
 --- /dev/null
-+++ b/frontend/src/core/tutor/help-message.test.tsx
++++ b/frontend/src/core/tutor/header.test.tsx
+@@ -0,0 +1,27 @@
++/* Copyright 2026 Marimo. All rights reserved. */
++
++import { renderToStaticMarkup } from "react-dom/server";
++import { expect, it, vi } from "vitest";
++import { TutorHeader } from "./header";
++
++const state = vi.hoisted(() => ({
++  enabled: true,
++  config: { app_title: "Averages <basics>" },
++  filename: "/lessons/learning_means.py",
++}));
++vi.mock("jotai", () => ({ useAtomValue: () => state.config }));
++vi.mock("@/core/config/config", () => ({ appConfigAtom: {} }));
++vi.mock("@/core/saving/filename", () => ({ useFilename: () => state.filename }));
++vi.mock("./connection", () => ({ getTutorConnection: () => state.enabled }));
++
++it("shows an escaped subject only in tutor mode, with filename and empty fallbacks", () => {
++  const render = () => renderToStaticMarkup(<TutorHeader />);
++  expect(render()).toContain("ZenTutor:");
++  expect(render()).toContain("Averages &lt;basics&gt;");
++  state.config.app_title = " ";
++  expect(render()).toContain("learning means");
++  state.filename = "";
++  expect(render()).toContain("Learning notebook");
++  state.enabled = false;
++  expect(render()).toBe("");
++});
+diff --git a/frontend/src/core/tutor/header.tsx b/frontend/src/core/tutor/header.tsx
+new file mode 100644
+index 0000000..96d7d03
+--- /dev/null
++++ b/frontend/src/core/tutor/header.tsx
 @@ -0,0 +1,32 @@
 +/* Copyright 2026 Marimo. All rights reserved. */
 +
-+import { fireEvent, render, screen } from "@testing-library/react";
++import { useAtomValue } from "jotai";
++import { appConfigAtom } from "@/core/config/config";
++import { useFilename } from "@/core/saving/filename";
++import { Paths } from "@/utils/paths";
++import { getTutorConnection } from "./connection";
++
++export function TutorHeader() {
++  const config = useAtomValue(appConfigAtom);
++  const filename = useFilename();
++  if (!getTutorConnection()) {
++    return null;
++  }
++  const subject =
++    config.app_title?.trim() ||
++    Paths.basename(filename ?? "").replace(/\.py$/, "").replace(/[_-]/g, " ") ||
++    "Learning notebook";
++  return (
++    <header
++      aria-label="ZenTutor learning subject"
++      className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-4 py-3 text-sm print:hidden"
++    >
++      <span className="shrink-0 font-semibold tracking-tight text-primary">
++        ZenTutor:
++      </span>
++      <span className="truncate text-muted-foreground" title={subject}>
++        {subject}
++      </span>
++    </header>
++  );
++}
+diff --git a/frontend/src/core/tutor/help-message.test.tsx b/frontend/src/core/tutor/help-message.test.tsx
+new file mode 100644
+index 0000000..9402ab8
+--- /dev/null
++++ b/frontend/src/core/tutor/help-message.test.tsx
+@@ -0,0 +1,45 @@
++/* Copyright 2026 Marimo. All rights reserved. */
++
++import { render } from "@testing-library/react";
 +import { afterEach, expect, it, vi } from "vitest";
-+import { UserMessagesBlock } from "@/components/chat/acp/blocks";
++import { ToolNotificationsBlock, UserMessagesBlock } from "@/components/chat/acp/blocks";
 +import * as connection from "./connection";
 +import { TUTOR_HELP_REQUEST } from "./help";
 +
 +afterEach(() => vi.restoreAllMocks());
 +
-+it("keeps the exact help context available behind a native disclosure", () => {
++it("shows only the help request in tutor chat, without rendering its context", () => {
 +  vi.spyOn(connection, "getTutorConnection").mockReturnValue({
 +    url: "http://127.0.0.1:3027",
 +    token: "a".repeat(64),
@@ -1412,11 +1500,24 @@ index 0000000..32541b1
 +      ]}
 +    />,
 +  );
-+  expect(container.querySelector("details")?.open).toBe(false);
-+  fireEvent.click(screen.getByText("Cell context sent to tutor"));
-+  expect(container.querySelector("details")?.open).toBe(true);
-+  expect(container.querySelector("pre")?.textContent).toBe(text);
++  expect(container.textContent).toBe(TUTOR_HELP_REQUEST);
++  expect(container.querySelector("details")).toBeNull();
++  expect(container.querySelector("pre")).toBeNull();
 +  expect(container.querySelector("script")).toBeNull();
++});
++
++it("hides tutor tool chatter but retains a failure notice and ordinary agent details", () => {
++  const tutor = vi.spyOn(connection, "getTutorConnection").mockReturnValue({
++    url: "http://127.0.0.1:3027", token: "a".repeat(64),
++  });
++  const data = [{ sessionUpdate: "tool_call" as const, toolCallId: "inspect", title: "Inspect notebook", status: "completed" as const }];
++  const { container, rerender } = render(<ToolNotificationsBlock data={data} isLastBlock={false} />);
++  expect(container.textContent).toBe("");
++  rerender(<ToolNotificationsBlock data={[{ ...data[0], status: "failed" }]} isLastBlock={false} />);
++  expect(container.textContent).toContain("That step didn’t finish");
++  tutor.mockReturnValue(null);
++  rerender(<ToolNotificationsBlock data={data} isLastBlock={false} />);
++  expect(container.textContent).toContain("Inspect notebook");
 +});
 diff --git a/frontend/src/core/tutor/help.test.ts b/frontend/src/core/tutor/help.test.ts
 new file mode 100644
