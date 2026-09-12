@@ -32,6 +32,12 @@ test("CLI works outside the checkout and explicitly imports private, isolated cr
   assert.equal(run("auth", "--from", "source.json").status, 1);
   assert.equal(run("lesson.py", "--unknown").status, 1);
   assert.match(run("lesson.py", "--port", "invalid").stderr, /distinct valid ports/);
+  const initialized = run("init", "new lesson.py", "--port", "invalid");
+  assert.match(initialized.stdout, /Created/);
+  const setup = await readFile(join(temp, "new lesson.py"), "utf8");
+  assert.match(setup, /data-zen-onboarding/);
+  assert.equal(run("init", "new lesson.py").status, 1);
+  assert.equal(await readFile(join(temp, "new lesson.py"), "utf8"), setup);
 });
 
 test("installed CLI launches a notebook from another directory without contacting a model", { skip: !process.env.ZEN_TEST_CLI, timeout: 30_000 }, async (t) => {

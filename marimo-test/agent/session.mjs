@@ -6,6 +6,8 @@ import {
   ModelRuntime, SessionManager, SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { MarimoNotebook, notebookTools } from "./marimo.mjs";
+import { searchTool } from "./search.mjs";
+import { learningTools } from "./learning.mjs";
 
 export const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const profileDir = resolve(process.env.TUTOR_PROFILE || join(projectDir, ".tutor"));
@@ -60,7 +62,7 @@ export async function createTutor({ url, notebook, token, provider, modelId, thi
     (file) => readFile(new URL(file, import.meta.url), "utf8"),
   ))).join("\n\n");
   const connection = new MarimoNotebook({ url, notebook: notebookPath, token });
-  const customTools = notebookTools(connection);
+  const customTools = [...notebookTools(connection), searchTool, ...learningTools];
   const resourceLoader = tutorResources(prompt);
   const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
   let sessionManager = SessionManager.create(cwd, sessionDir);

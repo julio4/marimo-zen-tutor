@@ -12,6 +12,7 @@ import { WebSocketServer } from "ws";
 import { profileDir, projectDir } from "./session.mjs";
 import { MarimoNotebook } from "./marimo.mjs";
 import { createTutorDebug } from "./debug.mjs";
+import { learningController } from "./learning.mjs";
 
 export async function listTutorSessions(profile, notebook) {
   let files;
@@ -37,29 +38,46 @@ export async function startTutorServer({ notebook, url, port = 3027, profile = p
   notebook = await realpath(notebook);
   profile = resolve(profile);
   const origin = new URL(url).origin;
+  const notebookConnection = new MarimoNotebook({ url, notebook, token: process.env.MARIMO_TOKEN });
+  const learning = await learningController(profile, notebook, notebookConnection);
   const adapter = resolve(projectDir, "../pi-acp/dist/index.js");
   await stat(adapter);
   const mapDir = join(profile, "acp", createHash("sha256").update(notebook).digest("hex"));
   await mkdir(mapDir, { recursive: true, mode: 0o700 });
   let activeSocket;
-  const debug = createTutorDebug([token, process.env.TUTOR_API_KEY, process.env.MARIMO_TOKEN]);
+  const debug = createTutorDebug([token, process.env.TUTOR_API_KEY, process.env.MARIMO_TOKEN, process.env.EXA_API_KEY]);
   const instructions = debug.redact((await Promise.all(["tutor.md", "marimo-guide.md"].map(
     (file) => readFile(new URL(file, import.meta.url), "utf8"),
   ))).join("\n\n"));
   const children = new Set();
   const server = createServer(async (req, res) => {
-    if (req.headers.origin !== origin || !["/sessions", "/initialize", "/debug", "/debug/pause", "/debug/resume", "/debug/clear"].includes(req.url)) { res.writeHead(403).end(); return; }
+    if (req.headers.origin !== origin || !["/sessions", "/initialize", "/debug", "/debug/pause", "/debug/resume", "/debug/clear", "/learning", "/learning/propose", "/learning/approve", "/learning/generate"].includes(req.url)) { res.writeHead(403).end(); return; }
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Cache-Control", "no-store");
     if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Headers", "Authorization");
+      res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST");
       res.writeHead(204).end(); return;
     }
-    if (req.method !== (["/sessions", "/debug"].includes(req.url) ? "GET" : "POST") || req.headers.authorization !== `Bearer ${token}`) { res.writeHead(403).end(); return; }
+    if (req.method !== (["/sessions", "/debug", "/learning"].includes(req.url) ? "GET" : "POST") || req.headers.authorization !== `Bearer ${token}`) { res.writeHead(403).end(); return; }
     try {
       res.setHeader("Content-Type", "application/json");
+      if (req.url === "/learning") { res.end(JSON.stringify(learning.get())); return; }
+      if (req.url.startsWith("/learning/")) {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk.toString();
+          if (body.length > 64000) throw new Error("Learning request is too large.");
+        }
+        try {
+          const data = JSON.parse(body);
+          debug.record("learning", { method: req.url, params: data });
+          res.end(JSON.stringify(await learning.update(req.url.split("/").at(-1), data)));
+        }
+        catch (error) { res.writeHead(400); res.end(JSON.stringify({ error: error.message })); }
+        return;
+      }
       if (req.url.startsWith("/debug")) {
         if (req.url === "/debug/pause") debug.pause(true);
         if (req.url === "/debug/resume") debug.pause(false);
@@ -67,7 +85,9 @@ export async function startTutorServer({ notebook, url, port = 3027, profile = p
         res.end(JSON.stringify({ notebook, connected: activeSocket?.readyState === 1, instructions, ...debug.snapshot() })); return;
       }
       if (req.url === "/initialize") {
-        const result = await new MarimoNotebook({ url, notebook, token: process.env.MARIMO_TOKEN }).initialize();
+        const result = learning.get() && learning.get().phase !== "complete"
+          ? await learning.update("initialize", {})
+          : await notebookConnection.initialize();
         res.end(JSON.stringify(result)); return;
       }
       res.end(JSON.stringify({ notebook, sessions: await listTutorSessions(profile, notebook) }));
@@ -88,7 +108,8 @@ export async function startTutorServer({ notebook, url, port = 3027, profile = p
       cwd: dirname(notebook), detached: true, stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, PI_ACP_ISOLATED: "true", PI_ACP_DIR: mapDir,
         PI_CODING_AGENT_DIR: profile, PI_ACP_PI_COMMAND: join(projectDir, "agent/runner.mjs"),
-        TUTOR_PROFILE: profile, TUTOR_NOTEBOOK: notebook, TUTOR_URL: url },
+        TUTOR_PROFILE: profile, TUTOR_NOTEBOOK: notebook, TUTOR_URL: url,
+        TUTOR_BROKER_URL: `http://127.0.0.1:${server.address().port}`, TUTOR_BROKER_TOKEN: token },
     });
     children.add(child);
     const knownSessions = new Set();
@@ -143,7 +164,7 @@ export async function startTutorServer({ notebook, url, port = 3027, profile = p
   server.listen(port, "127.0.0.1");
   await once(server, "listening");
   return {
-    port: server.address().port, token,
+    port: server.address().port, token, onboarding: !!learning.get() && learning.get().phase !== "complete",
     close: async () => {
       for (const socket of wss.clients) socket.terminate();
       for (const child of children) { try { process.kill(-child.pid, "SIGTERM"); } catch {} }
@@ -170,7 +191,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   process.on("SIGINT", close); process.on("SIGTERM", close);
   marimo.on("error", async () => { process.exitCode = 1; await close(); });
   marimo.on("exit", async (code) => { if (code) process.exitCode = code; await close(); });
-  const launchUrl = `${url}/#zen=${broker.token}&zenPort=${broker.port}`;
+  const launchUrl = `${url}/#zen=${broker.token}&zenPort=${broker.port}${broker.onboarding ? "&zenInit=1" : ""}`;
   if (!values.headless) {
     const { setTimeout: delay } = await import("node:timers/promises");
     let ready = false;

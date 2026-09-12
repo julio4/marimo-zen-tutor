@@ -35,7 +35,7 @@ try {
     } else {
       await mkdir(join(destination, "agent"));
       for (const file of await readdir(join(root, name, "agent"))) {
-        if (file.endsWith(".test.mjs") || file === "browser-smoke.mjs") continue;
+        if (file.endsWith(".test.mjs") || file.endsWith("browser-smoke.mjs")) continue;
         await copyFile(join(root, name, "agent", file), join(destination, "agent", file));
       }
       await chmod(join(destination, "agent/cli.mjs"), 0o755);

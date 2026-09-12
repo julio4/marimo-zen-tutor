@@ -39,6 +39,9 @@ test("ACP notebook binding, isolated resources, two requests and resume", { time
   const endpoint = `http://127.0.0.1:${broker.port}`;
   const debugRequest = (action = "") => fetch(endpoint + "/debug" + action, { method: action ? "POST" : "GET", headers: { Origin: url, Authorization: `Bearer ${broker.token}` } }).then((r) => r.json());
   assert.equal((await fetch(endpoint + "/debug")).status, 403);
+  const preflight = await fetch(endpoint + "/learning/approve", { method: "OPTIONS", headers: { Origin: url, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization,content-type" } });
+  assert.match(preflight.headers.get("access-control-allow-headers"), /Content-Type/i);
+  assert.equal((await fetch(endpoint + "/learning/approve", { method: "POST", headers: { Origin: url, "Content-Type": "application/json" }, body: '{}' })).status, 403);
   assert.equal((await debugRequest()).paused, true);
   assert.deepEqual((await debugRequest()).events, []);
   await debugRequest("/resume");

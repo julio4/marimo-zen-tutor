@@ -39,5 +39,5 @@ tutor-start:
 
 tutor-check: fork-check
 	cd pi-acp && npm run build && npm run typecheck && npm test
-	cd marimo-test && node --test agent/acp.test.mjs agent/debug.test.mjs agent/cli.test.mjs
+	cd marimo-test && MARIMO_TEST_EXECUTABLE="$(CURDIR)/marimo/.venv/bin/marimo" node --test agent/acp.test.mjs agent/debug.test.mjs agent/cli.test.mjs agent/search.test.mjs agent/learning.test.mjs
 	cd marimo && $(PNPM) 'pnpm --filter @marimo-team/frontend typecheck && pnpm --filter @marimo-team/frontend test src/core/tutor src/components/chat/acp/__tests__/state.test.ts src/components/editor/chrome/__tests__/state.test.ts src/components/editor/navigation/__tests__/navigation.test.ts'

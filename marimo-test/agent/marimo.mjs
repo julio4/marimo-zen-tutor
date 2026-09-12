@@ -1,3 +1,5 @@
+import { ONBOARDING_CODE } from "./learning.mjs";
+
 // The same HTTP/scratchpad path used by marimo-pair. Pinned to marimo 0.24.2.
 // Keep the private API here; never expose arbitrary Python to the tutor.
 const PRELUDE = `import json, hashlib, html, ast
@@ -160,6 +162,61 @@ print("ZEN_RESULT:" + json.dumps({"alias": alias, "ran": ran}))`, signal);
     return this.#append({ after, revision, text, kind: "hint" }, signal);
   }
 
+  async initializeLearning(code, signal, planId = null) {
+    await this.initialize(signal);
+    return this.#execute(`${PRELUDE}
+code = ${payload(code)}
+plan_id = ${payload(planId)}
+completed = []
+async with cm.get_context() as ctx:
+    completed = [c.id for c in ctx.cells if plan_id and c.code.startswith("# Zen lesson " + plan_id + "\\n")]
+    if not completed:
+        matches = [c for c in ctx.cells if c.code.strip() == code.strip()]
+        if len(matches) != 1:
+            raise ValueError("The setup cell was edited or removed. Restore it to continue learning setup.")
+        ctx.run_cell(matches[0].id)
+print("ZEN_RESULT:" + json.dumps({"initialized": not bool(completed), "completed": bool(completed), "cell_ids": completed}))`, signal);
+  }
+
+  async generateLesson(data, signal) {
+    if (!/^[a-f0-9]{64}$/.test(data.revision) || typeof data.planId !== "string" || !/^[a-f0-9-]{36}$/.test(data.planId) || typeof data.goal !== "string" || data.goal.length > 1000 || typeof data.onboardingCode !== "string") throw new Error("Inspect first and use the approved plan.");
+    if (!Array.isArray(data.sections) || data.sections.length < 2 || data.sections.length > 8 || data.sections.some((s) => !["explanation", "practice", "exercise"].includes(s.kind) || typeof s.text !== "string" || !s.text.trim() || s.text.length > 4000 || !Array.isArray(s.choices) || (s.kind === "practice" ? s.choices.length < 2 || s.choices.length > 4 || new Set(s.choices).size !== s.choices.length || s.choices.some((c) => typeof c !== "string" || !c.trim() || c.length > 200) : s.choices.length !== 0))) throw new Error("Provide 2–8 bounded explanation, practice or exercise sections.");
+    await this.initialize(signal);
+    return this.#execute(`${PRELUDE}
+data = ${payload(data)}
+marker = "# Zen lesson " + data["planId"]
+async with cm.get_context() as ctx:
+    existing = [c.id for c in ctx.cells if c.code.startswith(marker + "\\n")]
+    if existing:
+        ids = existing
+    else:
+        if revision(ctx) != data["revision"]:
+            raise ValueError("Notebook changed. Inspect again before creating the lesson.")
+        matches = [c for c in ctx.cells if c.code.strip() == data["onboardingCode"].strip()]
+        if len(matches) != 1:
+            raise ValueError("The setup cell was edited or removed; refusing to delete any cell.")
+        anchor = matches[0].id
+        mo = marimo_alias(ctx)
+        ids = []
+        codes = [(marker + "\\n" + mo + ".md(" + repr("# " + html.escape(data["goal"])) + ")", True)]
+        for section in data["sections"]:
+            text = html.escape(section["text"])
+            if section["kind"] == "practice":
+                code = mo + ".ui.radio(" + repr([html.escape(s) for s in section["choices"]]) + ", label=" + repr(text) + ")"
+            else:
+                code = mo + ".md(" + repr(text) + ")"
+            codes.append((code, True))
+            if section["kind"] == "exercise":
+                codes.append(("# Your turn: try the exercise here.", False))
+        for code, hidden in codes:
+            anchor = ctx.create_cell(code, after=anchor, hide_code=hidden)
+            ids.append(anchor)
+            if hidden:
+                ctx.run_cell(anchor)
+        ctx.delete_cell(matches[0].id)
+print("ZEN_RESULT:" + json.dumps({"cell_ids": ids}))`, signal);
+  }
+
   async addPractice({ after, revision, question, choices }, signal) {
     if (typeof question !== "string" || !question.trim() || question.length > 2000
         || !Array.isArray(choices) || choices.length < 2 || choices.length > 4
@@ -179,6 +236,8 @@ async with cm.get_context() as ctx:
     if revision(ctx) != data["revision"]:
         raise ValueError("Notebook changed. Inspect again before adding help.")
     anchor = ctx.cells[data["after"]]
+    if any(c.code.strip() == ${payload(ONBOARDING_CODE)}.strip() for c in ctx.cells):
+        raise ValueError("Finish goal approval and generate the learning notebook before adding hints or practice.")
     mo = marimo_alias(ctx)
     if getattr(ctx.globals.get(mo), "__name__", None) != "marimo":
         raise ValueError("Run the notebook's shared marimo import cell before adding teaching cells.")

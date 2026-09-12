@@ -92,7 +92,7 @@ test("isolated Pi profile and live marimo tools preserve student work", { timeou
 
   const tutor = await createTutor({ url, notebook, profile: join(temp, "profile") });
   runtime = tutor.runtime;
-  const expectedTools = ["inspect_notebook", "lookup_marimo_api", "add_hint", "add_practice"];
+  const expectedTools = ["inspect_notebook", "lookup_marimo_api", "add_hint", "add_practice", "search_sources", "propose_learning_goal", "generate_learning_notebook"];
   assert.deepEqual(runtime.session.agent.state.tools.map((tool) => tool.name), expectedTools);
   assert.equal(runtime.session.model.provider, "openai-codex");
   assert.equal(runtime.session.model.id, "gpt-6-astra");
