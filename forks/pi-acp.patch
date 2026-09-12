@@ -1,0 +1,202 @@
+diff --git a/src/acp/agent.ts b/src/acp/agent.ts
+index 381b04d..445bbc0 100644
+--- a/src/acp/agent.ts
++++ b/src/acp/agent.ts
+@@ -60,9 +60,10 @@ type AdvertisedModel = {
+ 
+ const MODEL_CONFIG_ID = 'model'
+ const THOUGHT_LEVEL_CONFIG_ID = 'thought_level'
++const ISOLATED_COMMANDS = new Set(['compact', 'autocompact', 'session', 'name', 'steering', 'follow-up'])
+ 
+ function builtinAvailableCommands(): AvailableCommand[] {
+-  return [
++  const commands: AvailableCommand[] = [
+     {
+       name: 'compact',
+       description: 'Manually compact the session context',
+@@ -101,6 +102,9 @@ function builtinAvailableCommands(): AvailableCommand[] {
+       description: 'Show pi changelog'
+     }
+   ]
++  return process.env.PI_ACP_ISOLATED === 'true'
++    ? commands.filter(command => ISOLATED_COMMANDS.has(command.name))
++    : commands
+ }
+ 
+ function mergeCommands(a: AvailableCommand[], b: AvailableCommand[]): AvailableCommand[] {
+@@ -446,6 +450,9 @@ export class PiAcpAgent implements ACPAgent {
+       const trimmed = message.trim()
+       const space = trimmed.indexOf(' ')
+       const cmd = space === -1 ? trimmed.slice(1) : trimmed.slice(1, space)
++      if (process.env.PI_ACP_ISOLATED === 'true' && !ISOLATED_COMMANDS.has(cmd)) {
++        throw RequestError.invalidParams('This command is unavailable in the isolated tutor')
++      }
+       const argsString = space === -1 ? '' : trimmed.slice(space + 1)
+       const args = parseCommandArgs(argsString)
+ 
+@@ -1457,6 +1464,7 @@ function compareSemver(a: string, b: string): number {
+ }
+ 
+ function buildUpdateNotice(): string | null {
++  if (process.env.PI_ACP_ISOLATED === 'true') return null
+   // Best-effort update check against npm registry.
+   // Important: keep it fast to not slow down session/new.
+   try {
+diff --git a/src/acp/auth.ts b/src/acp/auth.ts
+index caa89e3..c9c46a5 100644
+--- a/src/acp/auth.ts
++++ b/src/acp/auth.ts
+@@ -11,6 +11,7 @@ export const PI_SETUP_METHOD_ID = 'pi_terminal_login'
+  *  - `type/args/env`: registry-required shape.
+  */
+ export function getAuthMethods(opts?: { supportsTerminalAuthMeta?: boolean }): AuthMethod[] {
++  if (process.env.PI_ACP_ISOLATED === 'true') return []
+   const supportsTerminalAuthMeta = opts?.supportsTerminalAuthMeta ?? true
+ 
+   const method: any = {
+diff --git a/src/acp/paths.ts b/src/acp/paths.ts
+index 4f55af3..4bc6008 100644
+--- a/src/acp/paths.ts
++++ b/src/acp/paths.ts
+@@ -1,5 +1,5 @@
+ import { homedir } from 'node:os'
+-import { join } from 'node:path'
++import { join, resolve } from 'node:path'
+ 
+ /**
+  * Storage owned by the ACP adapter.
+@@ -7,6 +7,7 @@ import { join } from 'node:path'
+  * We intentionally keep this separate from pi's own ~/.pi/agent/* directory.
+  */
+ export function getPiAcpDir(): string {
++  if (process.env.PI_ACP_DIR) return resolve(process.env.PI_ACP_DIR)
+   return join(homedir(), '.pi', 'pi-acp')
+ }
+ 
+diff --git a/src/acp/pi-settings.ts b/src/acp/pi-settings.ts
+index e0b6cf4..b7755f3 100644
+--- a/src/acp/pi-settings.ts
++++ b/src/acp/pi-settings.ts
+@@ -28,6 +28,7 @@ function readJsonFile(path: string): Record<string, unknown> {
+ }
+ 
+ function getMergedSettings(cwd: string): Record<string, unknown> {
++  if (process.env.PI_ACP_ISOLATED === 'true') return { quietStartup: true, enableSkillCommands: false }
+   const globalSettingsPath = join(getAgentDir(), 'settings.json')
+   const projectSettingsPath = resolve(cwd, '.pi', 'settings.json')
+ 
+diff --git a/src/acp/session.ts b/src/acp/session.ts
+index d2fae68..5e4fa08 100644
+--- a/src/acp/session.ts
++++ b/src/acp/session.ts
+@@ -283,6 +283,7 @@ export class PiAcpSession {
+   // when retry, compaction, or queued continuations run. The session-level prompt
+   // completes only when `agent_settled` is emitted.
+   private inAgentLoop = false
++  private turnError: Error | null = null
+ 
+   // For ACP diff support: capture file contents before edit/write mutations,
+   // then emit ToolCallContent {type:"diff"}. Compatible structured edit/write
+@@ -472,6 +473,7 @@ export class PiAcpSession {
+   }
+ 
+   private startTurn(t: QueuedTurn): void {
++    this.turnError = null
+     this.cancelRequested = false
+     this.inAgentLoop = false
+ 
+@@ -829,6 +831,17 @@ export class PiAcpSession {
+         break
+       }
+ 
++      case 'message_end': {
++        const message = ev.message as { role?: string; stopReason?: string } | undefined
++        if (message?.role === 'assistant' && message.stopReason === 'error') {
++          this.turnError = RequestError.internalError(
++            {},
++            'The model request failed. Check provider configuration and retry.'
++          )
++        }
++        break
++      }
++
+       case 'agent_end': {
+         // One low-level run ended. Pi may still retry, compact, or process a queued
+         // continuation, so keep the ACP turn open until `agent_settled`.
+@@ -841,7 +854,8 @@ export class PiAcpSession {
+         // the ACP `session/prompt` request.
+         void this.flushEmits().finally(() => {
+           const reason: StopReason = this.cancelRequested ? 'cancelled' : 'end_turn'
+-          this.pendingTurn?.resolve(reason)
++          if (this.turnError) this.pendingTurn?.reject(this.turnError)
++          else this.pendingTurn?.resolve(reason)
+           this.pendingTurn = null
+           this.inAgentLoop = false
+ 
+diff --git a/src/acp/slash-commands.ts b/src/acp/slash-commands.ts
+index a014a00..2f5b7ae 100644
+--- a/src/acp/slash-commands.ts
++++ b/src/acp/slash-commands.ts
+@@ -96,6 +96,7 @@ function loadCommandsFromDir(dir: string, source: 'user' | 'project', subdir = '
+  *  - project: <cwd>/.pi/prompts/**\/*.md
+  */
+ export function loadSlashCommands(cwd: string): FileSlashCommand[] {
++  if (process.env.PI_ACP_ISOLATED === 'true') return []
+   const commands: FileSlashCommand[] = []
+ 
+   const userDir = join(homedir(), '.pi', 'agent', 'prompts')
+diff --git a/src/index.ts b/src/index.ts
+index e33940c..cdc381a 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -49,12 +49,13 @@ const output = new ReadableStream<Uint8Array>({
+ 
+ const stream = ndJsonStream(input, output)
+ 
+-const agent = new AgentSideConnection(conn => new PiAcpAgent(conn), stream)
++let agent: PiAcpAgent
++new AgentSideConnection(conn => (agent = new PiAcpAgent(conn)), stream)
+ 
+ function shutdown() {
+   try {
+     // Best-effort: dispose session subprocesses when the client disconnects.
+-    ;(agent as any)?.agent?.dispose?.()
++    agent?.dispose()
+   } catch {
+     // ignore
+   }
+diff --git a/test/component/session-events.test.ts b/test/component/session-events.test.ts
+index 2148ce8..c1bc16c 100644
+--- a/test/component/session-events.test.ts
++++ b/test/component/session-events.test.ts
+@@ -6,6 +6,30 @@ import { join } from 'node:path'
+ import { PiAcpSession } from '../../src/acp/session.js'
+ import { FakeAgentSideConnection, FakePiRpcProcess, asAgentConn } from '../helpers/fakes.js'
+ 
++test('PiAcpSession: a provider failure is not reported as a successful turn', async () => {
++  const conn = new FakeAgentSideConnection()
++  const proc = new FakePiRpcProcess()
++  const session = new PiAcpSession({
++    sessionId: 's1',
++    cwd: process.cwd(),
++    mcpServers: [],
++    proc: proc as any,
++    conn: asAgentConn(conn),
++    fileCommands: []
++  })
++  const failed = assert.rejects(session.prompt('hello'), error => {
++    assert.doesNotMatch(JSON.stringify(error), /secret-access-token/)
++    return true
++  })
++  await new Promise(resolve => setTimeout(resolve, 0))
++  proc.emit({
++    type: 'message_end',
++    message: { role: 'assistant', stopReason: 'error', errorMessage: 'secret-access-token' }
++  })
++  proc.emit({ type: 'agent_settled' })
++  await failed
++})
++
+ test('PiAcpSession: emits agent_message_chunk for text_delta', async () => {
+   const conn = new FakeAgentSideConnection()
+   const proc = new FakePiRpcProcess()
