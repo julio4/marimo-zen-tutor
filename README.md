@@ -11,6 +11,7 @@ Zen can also help you transform a learning intent in a full fledged notebook tha
 - Native tutor panel with streaming responses, cancellation and automatic notebook-scoped session resume.
 - Per-cell **Help me think** to give hints and advices.
 - Bundled marimo guidance and read-only API documentation lookup from the installed version.
+- Exa-powered web search for teaching references from trusted sources, such as official documentation and university materials, with domain filtering and source citations. Enable it with `EXA_API_KEY`.
 - A **Tutor** developer tab showing context, session/model configuration and all request/tool/error events, with pause, clear and export.
 - No cheat mode: Agent can't give the answer. Competing AI generation, rewrite/fix shortcuts and AI autocomplete disabled in tutor mode. Normal editing and completion remain available.
 
@@ -71,4 +72,3 @@ cd ../../marimo-test && node agent/browser-smoke.mjs
 The repository stores our changes as patches, not copies of upstream Git history. `forks/pins.json` pins marimo 0.24.2 and pi-acp 0.0.33; setup recreates the ignored `marimo/` and `pi-acp/` checkouts and applies the patches without overwriting conflicting work. After editing either checkout, run `node scripts/snapshot-forks.mjs` and commit the updated patches. Tutor runtime and tests live in `marimo-test/agent/`; the bundled example is `marimo-test/notebooks/averages.py`.
 
 Upstream projects retain their licenses: marimo is Apache-2.0; pi-acp is MIT. Their copyright notices remain in the patches and generated checkouts.
-
