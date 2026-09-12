@@ -1,0 +1,28 @@
+# Generated upstream checkouts (recreated by scripts/bootstrap-forks.mjs).
+/marimo/
+/pi-acp/
+
+# Local credentials, conversations, caches and dependencies.
+**/.tutor/
+**/auth.json
+**/.git-spike-backup/
+**/.env
+**/.env.*
+**/node_modules/
+**/.venv/
+**/__pycache__/
+**/__marimo__/
+**/*.pyc
+**/dist/
+.DS_Store
+
+# Local ideation notes and the original spike workspace.
+/*.md
+!/README.md
+/marimo-test/README.md
+/marimo-test/src/
+/marimo-test/pyproject.toml
+/marimo-test/uv.lock
+/marimo-test/.python-version
+/marimo-test/notebooks/*
+!/marimo-test/notebooks/averages.py

@@ -1,0 +1,15 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Isolated tutor runtime: credentials and transcripts stay local.
+node_modules/
+.tutor/
+__marimo__/
