@@ -14,7 +14,7 @@ try {
   const target = join(profileDir, "auth.json");
   const existing = await readFile(target, "utf8").catch((error) => { if (error.code === "ENOENT") return "{}"; throw error; });
   if (Object.keys(JSON.parse(existing)).length) throw new Error("Tutor auth already contains credentials; refusing to overwrite it.");
-  await writeFile(target, JSON.stringify({ [values.provider]: credential }, null, 2) + "\n", { mode: 0o600 });
+  await writeFile(target, JSON.stringify({ [values.provider]: credential }, null, 2) + "\n", { mode: 0o600, flag: "wx" });
   await chmod(target, 0o600);
   console.log(`Imported only ${values.provider} into the private tutor profile. Source unchanged.`);
 } catch (error) {

@@ -8,7 +8,7 @@ import {
 import { MarimoNotebook, notebookTools } from "./marimo.mjs";
 
 export const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-export const profileDir = join(projectDir, ".tutor");
+export const profileDir = resolve(process.env.TUTOR_PROFILE || join(projectDir, ".tutor"));
 
 // Explicit resource loader: no discovery or execution of machine/project profiles.
 export function tutorResources(prompt) {
@@ -29,7 +29,11 @@ export function tutorResources(prompt) {
 }
 
 export async function createTutor({ url, notebook, token, provider, modelId, thinking, resume, profile = profileDir }) {
-  const config = JSON.parse(await readFile(new URL("./config.json", import.meta.url), "utf8"));
+  const defaults = JSON.parse(await readFile(new URL("./config.json", import.meta.url), "utf8"));
+  const config = { ...defaults, ...JSON.parse(await readFile(join(profile, "config.json"), "utf8").catch((error) => {
+    if (error.code === "ENOENT") return "{}";
+    throw error;
+  })) };
   provider ??= config.provider;
   modelId ??= config.model;
   thinking ??= config.thinking;

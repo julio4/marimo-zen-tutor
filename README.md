@@ -20,34 +20,45 @@ Requires Git, Node.js 24+, npm, `make`, and [uv](https://docs.astral.sh/uv/). Th
 ```sh
 git clone git@github.com:julio4/marimo-zen-tutor.git
 cd marimo-zen-tutor
-make tutor-setup
-make fork-build
+make install
 ```
 
-Add credentials before starting. If you already authenticated Pi with ChatGPT/Codex, explicitly import only that provider's credential:
+Then, from any directory:
 
 ```sh
-node marimo-test/agent/import-auth.mjs --from "$HOME/.pi/agent/auth.json"
+zen auth
+zen /path/to/notebook.py
 ```
 
-This leaves your normal Pi profile untouched, refuses to replace populated tutor credentials, and writes a private `marimo-test/.tutor/auth.json`. **Never commit or share this file.** No credentials are supplied by this repository. Alternatively, provide `TUTOR_API_KEY` via your shell along with a compatible `TUTOR_PROVIDER` and `TUTOR_MODEL`.
+`zen auth` uses Pi's login flow, with browser or device-code authentication when supported. Credentials are private in `~/.zen/auth.json` (0600); notebook-bound sessions and model configuration also live under `~/.zen/`. Your normal Pi profile is not loaded. **Never commit or share credentials.** You can instead explicitly import one provider from an existing Pi profile, or authenticate an API-key provider:
 
 ```sh
-make tutor-start
-# Or open your own notebook on another port:
-make tutor-start NOTEBOOK=/absolute/path/to/lesson.py PORT=2723
+zen auth --from "$HOME/.pi/agent/auth.json"
+zen auth --provider anthropic --api-key
+zen notebook.py --port 2723 --agent-port 3028
+zen pip install numpy matplotlib
 ```
 
-Use the browser tab opened by the launcher: its private URL fragment connects the page to the agent. Do not share that URL. The default model is `openai-codex/gpt-6-astra` with medium thinking, configurable through `TUTOR_PROVIDER`, `TUTOR_MODEL`, `TUTOR_THINKING` and the agent panel.
+Import refuses to overwrite an existing auth file. Interactive login updates the selected provider. No credentials are bundled or automatically migrated from the development profile.
+
+The installer places `zen` in `~/.local/bin`; add that directory to `PATH` if needed. It copies the built app into `~/.zen/installs/` and switches `~/.zen/runtime` after successful installation, so the checkout is not required afterward. Node.js 24+ must remain available. `uv` manages Python 3.13 and is also needed for `zen pip install`. This first version shares one Python environment across notebooks; it does not automatically use a notebook's `.venv` or install its dependencies. Reinstalling retains credentials, configuration, sessions and older runtimes, but starts a fresh Python environment. Reinstall additional libraries as needed. `ZEN_HOME` and `ZEN_BIN_DIR` override the profile/install and launcher directories; keep `ZEN_HOME` set when using a custom installation.
+
+Use the browser tab opened by the launcher: its private URL fragment connects the page to the agent. Do not share that URL. The default model is `openai-codex/gpt-6-astra` with medium thinking. Edit `~/.zen/config.json` (`provider`, `model`, `thinking`), use `TUTOR_PROVIDER`, `TUTOR_MODEL`, `TUTOR_THINKING`, or use the agent panel. `TUTOR_API_KEY` is an optional environment-only credential for compatible providers.
 
 Keep `import marimo as mo` in its own enabled cell. Connection initializes that import without running the learner's other cells. Click the lightbulb beside a cell for help. Open the bottom-left developer-panel control and select **Tutor** for diagnostics. The upstream panel tabs are draggable; Escape exits tab drag mode if activated.
 
-Ctrl-C stops the local services. Restart the launcher and refresh after rebuilding.
+Ctrl-C stops the local services. Run `make install` again after changing the source; restart Zen to use the updated installation.
+
+The tutor top bar displays `ZenTutor: <subject>`. Set the subject with `marimo.App(app_title="Averages")` (or the notebook's App title setting); otherwise it uses the filename. This branding appears only in tutor mode.
+
+Tutor chat hides technical context and tool-call details. Diagnostics capture is off on each launcher start; choose **Enable capture** in the Tutor developer tab to record subsequent events. Teaching instructions favor visual explanations and interactive predictions within the available tools.
 
 ## Development
 
 ```sh
 make tutor-check
+# For checkout-based development, use make tutor-setup, make fork-build,
+# and make tutor-start NOTEBOOK=/path/to/notebook.py.
 # Optional live-model/browser test; uses your isolated tutor credentials:
 cd marimo/frontend && npx playwright install chromium
 cd ../../marimo-test && node agent/browser-smoke.mjs
@@ -61,6 +72,6 @@ Upstream projects retain their licenses: marimo is Apache-2.0; pi-acp is MIT. Th
 
 This is an early local prototype, not a hardened exam environment. Teaching tools preserve student cells, but avoiding answer leakage in conversation remains a behavioral goal. The adapter uses private marimo APIs and intentionally rejects unsupported versions.
 
-Selected notebook context goes to your configured model provider. Local credentials, conversations, diagnostics exports and test artifacts belong under ignored `.tutor/` directories. Broker diagnostics stay in memory, retain at most 200 events / one million payload characters plus bounded context snapshots, and use best-effort redaction. Review exports before sharing. Pause/clear affect diagnostics, not the tutor conversation. Diagnostics show ACP traffic, not the full provider request or hidden reasoning.
+Selected notebook context goes to your configured model provider. Installed credentials and conversations live under `~/.zen/`; checkout-based development uses ignored `.tutor/` directories. Keep diagnostics exports private too. Broker diagnostics stay in memory, retain at most 200 events / one million payload characters plus bounded context snapshots, and use best-effort redaction. Review exports before sharing. Pause/clear affect diagnostics, not the tutor conversation. Diagnostics show ACP traffic, not the full provider request or hidden reasoning.
 
 Learner profiles, companion metadata, passive learning telemetry, homework bootstrapping, Exa and ClickHouse are not implemented yet.
