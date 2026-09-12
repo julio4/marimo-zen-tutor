@@ -1,0 +1,13 @@
+{
+  "name": "zen-tutor-integration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "agent": "node agent/runner.mjs",
+    "test": "node --test agent/integration.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "ws": "8.21.0"
+  }
+}
